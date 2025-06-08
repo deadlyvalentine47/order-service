@@ -5,15 +5,14 @@ import com.ecommerce.orderservice.entity.Order.OrderItem;
 import com.ecommerce.orderservice.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClientException;
@@ -68,11 +67,14 @@ public class OrderService {
     private void initiatePayment(String orderId, BigDecimal amount, String paymentMethod) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", tokenService.getServiceToken());
-        Map<String, Object> paymentRequest = new HashMap<>();
-        paymentRequest.put("orderId", orderId);
-        paymentRequest.put("amount", amount);
-        paymentRequest.put("paymentMethod", paymentMethod);
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(paymentRequest, headers);
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> paymentRequest = new LinkedMultiValueMap<>();
+        paymentRequest.add("orderId", orderId);
+        paymentRequest.add("amount", amount.toString());
+        paymentRequest.add("paymentMethod", paymentMethod);
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(paymentRequest, headers);
 
         try {
             ResponseEntity<Void> response = restTemplate.exchange(
@@ -96,7 +98,6 @@ public class OrderService {
             throw new IllegalStateException("Failed to initiate payment due to network or service error", e);
         }
     }
-
     private void restoreStock(Order order) {
         for (OrderItem item : order.getItems()) {
             ResponseEntity<Map> response = fetchProduct(item.getProductId());
