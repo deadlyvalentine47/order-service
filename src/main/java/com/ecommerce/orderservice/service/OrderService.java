@@ -14,6 +14,8 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -70,12 +72,29 @@ public class OrderService {
         paymentRequest.put("orderId", orderId);
         paymentRequest.put("amount", amount);
         paymentRequest.put("paymentMethod", paymentMethod);
-        restTemplate.exchange(
-                PAYMENT_SERVICE_URL,
-                HttpMethod.POST,
-                new HttpEntity<>(paymentRequest, headers),
-                Void.class
-        );
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(paymentRequest, headers);
+
+        try {
+            ResponseEntity<Void> response = restTemplate.exchange(
+                    PAYMENT_SERVICE_URL,
+                    HttpMethod.POST,
+                    request,
+                    Void.class
+            );
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                log.error("Failed to initiate payment for orderId: {}. Response code: {}, Response: {}",
+                        orderId, response.getStatusCode(), response.getBody());
+                throw new IllegalStateException("Failed to initiate payment. Response code: " + response.getStatusCode());
+            }
+            log.info("Successfully initiated payment for orderId: {}", orderId);
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            log.error("Failed to initiate payment for orderId: {}. Status: {}, Response: {}",
+                    orderId, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Failed to initiate payment. Status: " + e.getStatusCode() + ", Response: " + e.getResponseBodyAsString(), e);
+        } catch (RestClientException e) {
+            log.error("Failed to initiate payment for orderId: {}. Error: {}", orderId, e.getMessage());
+            throw new IllegalStateException("Failed to initiate payment due to network or service error", e);
+        }
     }
 
     private void restoreStock(Order order) {
