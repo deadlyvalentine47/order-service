@@ -6,6 +6,7 @@ import com.ecommerce.orderservice.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
@@ -98,6 +99,7 @@ public class OrderService {
             throw new IllegalStateException("Failed to initiate payment due to network or service error", e);
         }
     }
+
     private void restoreStock(Order order) {
         for (OrderItem item : order.getItems()) {
             ResponseEntity<Map> response = fetchProduct(item.getProductId());
@@ -208,6 +210,7 @@ public class OrderService {
         return updatedOrder;
     }
 
+    @KafkaListener(topics = "PAYMENT_EVENTS", groupId = "order-service-group", containerFactory = "paymentKafkaListenerContainerFactory")
     public void handlePaymentEvent(com.ecommerce.orderservice.event.PaymentEvent event) {
         log.info("Processing payment event for orderId: {}", event.getOrderId());
         List<Order> orders = orderRepository.findAllById(event.getOrderId());
@@ -239,6 +242,7 @@ public class OrderService {
         }
     }
 
+    @KafkaListener(topics = "LOGISTICS_EVENTS", groupId = "order-service-group")
     public void handleLogisticsEvent(com.ecommerce.orderservice.event.LogisticsEvent event) {
         log.info("Processing logistics event for orderId: {}", event.getOrderId());
         List<Order> orders = orderRepository.findAllById(event.getOrderId());
